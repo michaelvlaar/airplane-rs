@@ -1,6 +1,6 @@
 [package]
 name = "airplane"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "A library for easy airplane-related calculations and visualizations, including weight and balance assessments and graphical representations.A Rust library for easy airplane-related calculations and visualizations, including weight and balance assessments and graphical representations."
