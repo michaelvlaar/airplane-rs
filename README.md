@@ -35,3 +35,5 @@ fn main() {
     };
 }
 ```
+### Output
+![image](https://github.com/user-attachments/assets/c89c4f59-892a-4cbd-b46d-ea0585fb80d9)
