@@ -15,7 +15,7 @@ fn main() {
         String::from("PHXXX"),
         vec![
             Moment::new(LeverArm::Meter(0.4294), Mass::Kilo(517.0)),
-            Moment::new(LeverArm::Meter(0.515), Mass::Kilo(110.0)),
+            Moment::new(LeverArm::Meter(0.515), Mass::Kilo(80.0)),
             Moment::new(LeverArm::Meter(0.515), Mass::Kilo(89.0)),
             Moment::new(LeverArm::Meter(1.3), Mass::Kilo(5.0)),
             Moment::new(LeverArm::Meter(0.325), Mass::Avgas(Volume::Liter(55.0))),
@@ -35,3 +35,5 @@ fn main() {
     };
 }
 ```
+### Output
+![image](https://github.com/user-attachments/assets/c89c4f59-892a-4cbd-b46d-ea0585fb80d9)
