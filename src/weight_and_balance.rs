@@ -1,4 +1,6 @@
 const AVGAS_FUEL_DENSITY_KG_LITER: f64 = 0.72;
+const MOGAS_FUEL_DENSITY_KG_LITER: f64 = 0.74;
+
 const LITERS_IN_GALLON: f64 = 378541.0 / 100000.0;
 
 pub enum LeverArm {
@@ -6,7 +8,7 @@ pub enum LeverArm {
 }
 
 impl LeverArm {
-    fn meter(&self) -> f64 {
+    pub fn meter(&self) -> f64 {
         match self {
             LeverArm::Meter(m) => *m,
         }
@@ -21,6 +23,7 @@ pub enum Volume {
 pub enum Mass {
     Kilo(f64),
     Avgas(Volume),
+    Mogas(Volume),
 }
 
 impl Mass {
@@ -30,6 +33,10 @@ impl Mass {
             Mass::Avgas(l) => match l {
                 Volume::Liter(l) => l * AVGAS_FUEL_DENSITY_KG_LITER,
                 Volume::Gallon(g) => g * LITERS_IN_GALLON * AVGAS_FUEL_DENSITY_KG_LITER,
+            },
+            Mass::Mogas(l) => match l {
+                Volume::Liter(l) => l * MOGAS_FUEL_DENSITY_KG_LITER,
+                Volume::Gallon(g) => g * LITERS_IN_GALLON * MOGAS_FUEL_DENSITY_KG_LITER,
             },
         }
     }
@@ -45,7 +52,15 @@ impl Moment {
         Moment { lever_arm, mass }
     }
 
-    fn total(&self) -> MassMoment {
+    pub fn lever_arm(&self) -> &LeverArm {
+        &self.lever_arm
+    }
+
+    pub fn mass(&self) -> &Mass {
+        &self.mass
+    }
+
+    pub fn total(&self) -> MassMoment {
         MassMoment::KgM(self.mass.kilo() * self.lever_arm.meter())
     }
 }
