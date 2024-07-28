@@ -20,6 +20,22 @@ pub enum Volume {
     Gallon(f64),
 }
 
+impl Volume {
+   pub fn to_liter(&self) -> f64 {
+       match self {
+           Volume::Liter(v) => *v,
+           Volume::Gallon(v) => *v * LITERS_IN_GALLON,
+       } 
+   }
+
+   pub fn to_gallon(&self) -> f64 {
+       match self {
+           Volume::Liter(v) => *v / LITERS_IN_GALLON,
+           Volume::Gallon(v) => *v,
+       }
+   }
+}
+
 pub enum Mass {
     Kilo(f64),
     Avgas(Volume),
@@ -39,6 +55,16 @@ impl Mass {
                 Volume::Gallon(g) => g * LITERS_IN_GALLON * MOGAS_FUEL_DENSITY_KG_LITER,
             },
         }
+    }
+
+    pub fn to_avgas(&self) -> Mass {
+        let liter = self.kilo() / AVGAS_FUEL_DENSITY_KG_LITER;
+        Mass::Avgas(Volume::Liter(liter))
+    }
+
+    pub fn to_mogas(&self) -> Mass {
+        let liter = self.kilo() / MOGAS_FUEL_DENSITY_KG_LITER;
+        Mass::Mogas(Volume::Liter(liter))
     }
 }
 
@@ -157,6 +183,32 @@ impl Airplane {
         CenterOfGravity::Meter(kgm_moment / kg_mass)
     }
 
+    pub fn add_max_mass_within_limits(&mut self, arm: LeverArm) -> &Moment {
+        let cg_limit = if arm.meter().ge(&0.5) {
+            self.limits().rearward_cg_limit().meter()
+        } else {
+            self.limits().forward_cg_limit().meter()
+        };
+
+        let kg_max_mass: f64 = (cg_limit * self.total_mass().kilo()
+            - self.total_mass_moment().kgm())
+            / (arm.meter() - cg_limit);
+
+        let moment = Moment::new(
+            arm,
+            Mass::Kilo(
+                if kg_max_mass + self.total_mass().kilo() >= self.limits().mtow().kilo() {
+                    self.limits().mtow().kilo() - self.total_mass().kilo()
+                } else {
+                    kg_max_mass
+                },
+            ),
+        );
+
+        self.moments.push(moment);
+        self.moments.last().unwrap()
+    }
+
     pub fn total_mass_moment(&self) -> MassMoment {
         MassMoment::KgM(self.moments.iter().map(|m| m.total().kgm()).sum())
     }
@@ -174,6 +226,14 @@ impl Airplane {
 
     pub fn callsign(&self) -> &String {
         &self.callsign
+    }
+
+    pub fn moments(&self) -> &Vec<Moment> {
+        &self.moments
+    }
+
+    pub fn add_moment(&mut self, moment: Moment) {
+        self.moments.push(moment);
     }
 }
 
@@ -204,6 +264,55 @@ mod test {
                 CenterOfGravity::Millimeter(523.0),
             ),
         )
+    }
+
+    fn calculate_maximum_mass() {
+        let mut plane = Airplane::new(
+            String::from("PHDHA"),
+            vec![
+                Moment::new(LeverArm::Meter(2.0), Mass::Kilo(10.0)),
+                Moment::new(LeverArm::Meter(3.0), Mass::Kilo(5.0)),
+            ],
+            Limits::new(
+                Mass::Kilo(10.0),
+                Mass::Kilo(40.0),
+                CenterOfGravity::Meter(1.0),
+                CenterOfGravity::Meter(3.0),
+            ),
+        );
+
+        assert_eq!(
+            10.0,
+            plane
+                .add_max_mass_within_limits(LeverArm::Meter(4.0))
+                .mass()
+                .kilo()
+        );
+        assert!(plane.within_limits());
+    }
+
+    #[test]
+    fn calculate_maximum_mass_mtow() {
+        let mut plane = Airplane::new(
+            String::from("PHDHA"),
+            vec![
+                Moment::new(LeverArm::Meter(2.0), Mass::Kilo(10.0)),
+                Moment::new(LeverArm::Meter(3.0), Mass::Kilo(5.0)),
+            ],
+            Limits::new(
+                Mass::Kilo(10.0),
+                Mass::Kilo(24.0),
+                CenterOfGravity::Meter(1.0),
+                CenterOfGravity::Meter(3.0),
+            ),
+        );
+
+        {
+            let max_moment = plane.add_max_mass_within_limits(LeverArm::Meter(4.0));
+            assert_eq!(9.0, max_moment.mass().kilo());
+        }
+
+        assert!(plane.within_limits());
     }
 
     #[test]
