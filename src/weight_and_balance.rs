@@ -15,27 +15,29 @@ impl LeverArm {
     }
 }
 
+#[derive(Debug)]
 pub enum Volume {
     Liter(f64),
     Gallon(f64),
 }
 
 impl Volume {
-   pub fn to_liter(&self) -> f64 {
-       match self {
-           Volume::Liter(v) => *v,
-           Volume::Gallon(v) => *v * LITERS_IN_GALLON,
-       } 
-   }
+    pub fn to_liter(&self) -> f64 {
+        match self {
+            Volume::Liter(v) => *v,
+            Volume::Gallon(v) => *v * LITERS_IN_GALLON,
+        }
+    }
 
-   pub fn to_gallon(&self) -> f64 {
-       match self {
-           Volume::Liter(v) => *v / LITERS_IN_GALLON,
-           Volume::Gallon(v) => *v,
-       }
-   }
+    pub fn to_gallon(&self) -> f64 {
+        match self {
+            Volume::Liter(v) => *v / LITERS_IN_GALLON,
+            Volume::Gallon(v) => *v,
+        }
+    }
 }
 
+#[derive(Debug)]
 pub enum Mass {
     Kilo(f64),
     Avgas(Volume),
@@ -69,13 +71,18 @@ impl Mass {
 }
 
 pub struct Moment {
+    name: String,
     lever_arm: LeverArm,
     mass: Mass,
 }
 
 impl Moment {
-    pub fn new(lever_arm: LeverArm, mass: Mass) -> Moment {
-        Moment { lever_arm, mass }
+    pub fn new(name: String, lever_arm: LeverArm, mass: Mass) -> Moment {
+        Moment {
+            name,
+            lever_arm,
+            mass,
+        }
     }
 
     pub fn lever_arm(&self) -> &LeverArm {
@@ -88,6 +95,10 @@ impl Moment {
 
     pub fn total(&self) -> MassMoment {
         MassMoment::KgM(self.mass.kilo() * self.lever_arm.meter())
+    }
+
+    pub fn name(&self) -> &String {
+        &self.name
     }
 }
 
@@ -183,7 +194,12 @@ impl Airplane {
         CenterOfGravity::Meter(kgm_moment / kg_mass)
     }
 
-    pub fn add_max_mass_within_limits(&mut self, arm: LeverArm) -> &Moment {
+    pub fn add_max_mass_within_limits(
+        &mut self,
+        name: String,
+        arm: LeverArm,
+        mass: Mass,
+    ) -> &Moment {
         let cg_limit = if arm.meter().ge(&0.5) {
             self.limits().rearward_cg_limit().meter()
         } else {
@@ -194,16 +210,21 @@ impl Airplane {
             - self.total_mass_moment().kgm())
             / (arm.meter() - cg_limit);
 
-        let moment = Moment::new(
-            arm,
-            Mass::Kilo(
-                if kg_max_mass + self.total_mass().kilo() >= self.limits().mtow().kilo() {
-                    self.limits().mtow().kilo() - self.total_mass().kilo()
-                } else {
-                    kg_max_mass
-                },
-            ),
+        let max_mass = Mass::Kilo(
+            if kg_max_mass + self.total_mass().kilo() >= self.limits().mtow().kilo() {
+                self.limits().mtow().kilo() - self.total_mass().kilo()
+            } else {
+                kg_max_mass
+            },
         );
+
+        let max_mass = match mass {
+            Mass::Mogas(_) => max_mass.to_mogas(),
+            Mass::Avgas(_) => max_mass.to_mogas(),
+            _others => max_mass,
+        };
+
+        let moment = Moment::new(name, arm, max_mass);
 
         self.moments.push(moment);
         self.moments.last().unwrap()
@@ -251,11 +272,19 @@ mod test {
         Airplane::new(
             String::from("PHDHA"),
             vec![
-                Moment::new(LeverArm::Meter(0.4294), Mass::Kilo(517.0)),
-                Moment::new(LeverArm::Meter(0.515), pilot_mass),
-                Moment::new(LeverArm::Meter(0.515), Mass::Kilo(89.0)),
-                Moment::new(LeverArm::Meter(1.3), Mass::Kilo(5.0)),
-                Moment::new(LeverArm::Meter(0.325), Mass::Avgas(Volume::Liter(62.0))),
+                Moment::new(
+                    "test".to_string(),
+                    LeverArm::Meter(0.4294),
+                    Mass::Kilo(517.0),
+                ),
+                Moment::new("test".to_string(), LeverArm::Meter(0.515), pilot_mass),
+                Moment::new("test".to_string(), LeverArm::Meter(0.515), Mass::Kilo(89.0)),
+                Moment::new("test".to_string(), LeverArm::Meter(1.3), Mass::Kilo(5.0)),
+                Moment::new(
+                    "test".to_string(),
+                    LeverArm::Meter(0.325),
+                    Mass::Avgas(Volume::Liter(62.0)),
+                ),
             ],
             Limits::new(
                 Mass::Kilo(558.0),
@@ -270,8 +299,8 @@ mod test {
         let mut plane = Airplane::new(
             String::from("PHDHA"),
             vec![
-                Moment::new(LeverArm::Meter(2.0), Mass::Kilo(10.0)),
-                Moment::new(LeverArm::Meter(3.0), Mass::Kilo(5.0)),
+                Moment::new("test".to_string(), LeverArm::Meter(2.0), Mass::Kilo(10.0)),
+                Moment::new("test".to_string(), LeverArm::Meter(3.0), Mass::Kilo(5.0)),
             ],
             Limits::new(
                 Mass::Kilo(10.0),
@@ -284,7 +313,7 @@ mod test {
         assert_eq!(
             10.0,
             plane
-                .add_max_mass_within_limits(LeverArm::Meter(4.0))
+                .add_max_mass_within_limits("test".to_string(), LeverArm::Meter(4.0), Mass::Avgas(Volume::Liter(0.0)))
                 .mass()
                 .kilo()
         );
@@ -296,8 +325,8 @@ mod test {
         let mut plane = Airplane::new(
             String::from("PHDHA"),
             vec![
-                Moment::new(LeverArm::Meter(2.0), Mass::Kilo(10.0)),
-                Moment::new(LeverArm::Meter(3.0), Mass::Kilo(5.0)),
+                Moment::new("test".to_string(), LeverArm::Meter(2.0), Mass::Kilo(10.0)),
+                Moment::new("test".to_string(), LeverArm::Meter(3.0), Mass::Kilo(5.0)),
             ],
             Limits::new(
                 Mass::Kilo(10.0),
@@ -308,7 +337,8 @@ mod test {
         );
 
         {
-            let max_moment = plane.add_max_mass_within_limits(LeverArm::Meter(4.0));
+            let max_moment =
+                plane.add_max_mass_within_limits("test".to_string(), LeverArm::Meter(4.0), Mass::Avgas(Volume::Liter(0.0)));
             assert_eq!(9.0, max_moment.mass().kilo());
         }
 
@@ -317,7 +347,11 @@ mod test {
 
     #[test]
     fn calculate_kg_moment() {
-        let m = Moment::new(LeverArm::Meter(0.4294), Mass::Kilo(517.0));
+        let m = Moment::new(
+            "test".to_string(),
+            LeverArm::Meter(0.4294),
+            Mass::Kilo(517.0),
+        );
         let MassMoment::KgM(kgm) = m.total();
 
         assert_eq!(517.0 * 0.4294, kgm);
