@@ -35,15 +35,15 @@ pub fn weight_and_balance_table_strings(plane: Airplane) -> Vec<Vec<String>> {
     for m in plane.moments().iter() {
         table.push(vec![
             match m.mass() {
-                Mass::Avgas(_) | Mass::Mogas(_) => format!("{} ({})", m.name(), m.mass().unit()),
+                Mass::Avgas(_) | Mass::Mogas(_) => format!("{} ({})", m.name(), m.mass().unit()).replace('.', ","),
                 _ => m.name().clone(),
             },
-            format!("{:.4}", m.lever_arm().meter()),
+            format!("{:.4}", m.lever_arm().meter()).replace('.', ","),
             match m.mass() {
-                Mass::Avgas(v) | Mass::Mogas(v) => format!("({}) {:.2}", v.to_string(), m.mass().kilo()),
-                _ => format!("{:.2}", m.mass().kilo()),
+                Mass::Avgas(v) | Mass::Mogas(v) => format!("({}) {:.2}", v.to_string(), m.mass().kilo()).replace('.', ","),
+                _ => format!("{:.2}", m.mass().kilo()).replace('.', ","),
             },
-            format!("{:.2}", m.total().kgm()),
+            format!("{:.2}", m.total().kgm()).replace('.', ","),
         ])
     }
 
@@ -52,9 +52,9 @@ pub fn weight_and_balance_table_strings(plane: Airplane) -> Vec<Vec<String>> {
         format!(
             "{:.4}",
             plane.total_mass_moment().kgm() / plane.total_mass().kilo()
-        ),
-        format!("{:.2}", plane.total_mass().kilo()),
-        format!("{:.2}", plane.total_mass_moment().kgm()),
+        ).replace('.', ","),
+        format!("{:.2}", plane.total_mass().kilo()).replace('.', ","),
+        format!("{:.2}", plane.total_mass_moment().kgm()).replace('.', ","),
     ]);
 
     table
@@ -317,6 +317,7 @@ pub fn weight_and_balance_chart(
         let mut chart = ChartBuilder::on(&left)
             .caption(plane.callsign(), ("sans-serif", 50).into_font())
             .margin(5)
+            .margin_right(20)
             .x_label_area_size(50)
             .y_label_area_size(80)
             .build_cartesian_2d(visualization.axis.0.clone(), visualization.axis.1.clone())
@@ -328,6 +329,8 @@ pub fn weight_and_balance_chart(
             .x_label_style(("sans-serif", 20).into_font())
             .y_desc("Mass [kg]")
             .y_label_style(("sans-serif", 20).into_font())
+            .x_label_formatter(&|x| format!("{}", x.round()))
+            .y_label_formatter(&|y| format!("{}", y.round()))
             .draw()
             .expect("cannot configure mesh.");
 
