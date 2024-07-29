@@ -1,4 +1,4 @@
-use crate::weight_and_balance::{Airplane, Mass};
+use crate::weight_and_balance::{Airplane, Mass, Volume};
 use core::ops::Range;
 use plotters::{prelude::*, style::full_palette::GREY};
 
@@ -16,7 +16,7 @@ impl WeightBalanceChartVisualization {
         dimensions: (u32, u32),
         axis: (Range<f64>, Range<f64>),
     ) -> WeightBalanceChartVisualization {
-        WeightBalanceChartVisualization { dimensions, axis}
+        WeightBalanceChartVisualization { dimensions, axis }
     }
 }
 
@@ -24,10 +24,43 @@ pub struct WeightBalanceTableVisualization {
     dimensions: (u32, u32),
 }
 
+pub fn weight_and_balance_table_strings(plane: Airplane) -> Vec<Vec<String>> {
+    let mut table = vec![vec![
+        "Name".to_string(),
+        "Lever Arm [m]".to_string(),
+        "Mass [kg]".to_string(),
+        "Mass Moment [kg m]".to_string(),
+    ]];
+
+    for m in plane.moments().iter() {
+        table.push(vec![
+            match m.mass() {
+                Mass::Avgas(_) | Mass::Mogas(_) => format!("{} ({})", m.name(), m.mass().unit()),
+                _ => m.name().clone(),
+            },
+            format!("{:.4}", m.lever_arm().meter()),
+            match m.mass() {
+                Mass::Avgas(v) | Mass::Mogas(v) => format!("({}) {:.2}", v.to_string(), m.mass().kilo()),
+                _ => format!("{:.2}", m.mass().kilo()),
+            },
+            format!("{:.2}", m.total().kgm()),
+        ])
+    }
+
+    table.push(vec![
+        "Total".to_string(),
+        format!(
+            "{:.4}",
+            plane.total_mass_moment().kgm() / plane.total_mass().kilo()
+        ),
+        format!("{:.2}", plane.total_mass().kilo()),
+        format!("{:.2}", plane.total_mass_moment().kgm()),
+    ]);
+
+    table
+}
 impl WeightBalanceTableVisualization {
-    pub fn new(
-        dimensions: (u32, u32),
-    ) -> WeightBalanceTableVisualization {
+    pub fn new(dimensions: (u32, u32)) -> WeightBalanceTableVisualization {
         WeightBalanceTableVisualization { dimensions }
     }
 }
@@ -53,7 +86,7 @@ pub fn weight_and_balance_table(
         let bold_text_style = TextStyle::from(bold_font).color(&BLACK);
 
         let cell_width = [110, 140, 180, 180];
-        let cell_padding = [10, 70, 31, 114];
+        let cell_padding = [10, 70, 21, 114];
         let cell_height = 30;
 
         let start_x = 0;
@@ -135,16 +168,18 @@ pub fn weight_and_balance_table(
                 .expect("cannot draw text");
 
             current_cell_width += cell_width[1];
-            
+
             let mass_str = match m.mass() {
-                Mass::Avgas(l) => format!("({:.1}l) {:.2}", l.to_liter(), m.mass().kilo()),
-                Mass::Mogas(v) => format!("({:.1}l) {:.2}", v.to_liter(), m.mass().kilo()),
+                Mass::Avgas(Volume::Liter(l)) => format!("({:.1}L) {:.2}", l, m.mass().kilo()),
+                Mass::Avgas(Volume::Gallon(g)) => format!("({:.1}gal) {:.2}", g, m.mass().kilo()),
+                Mass::Mogas(Volume::Liter(l)) => format!("({:.1}L) {:.2}", l, m.mass().kilo()),
+                Mass::Mogas(Volume::Gallon(g)) => format!("({:.1}gal) {:.2}", g, m.mass().kilo()),
                 Mass::Kilo(_) => format!("{:.2}", m.mass().kilo()),
             };
 
             right
                 .draw_text(
-                    &pad_with_nbsp(&mass_str, 14),
+                    &pad_with_nbsp(&mass_str, 16),
                     &text_style,
                     (current_cell_width + cell_padding[2], y + 10),
                 )
@@ -200,7 +235,7 @@ pub fn weight_and_balance_table(
         current_cell_width += cell_width[1];
         right
             .draw_text(
-                &pad_with_nbsp(&format!("{:.2}", plane.total_mass().kilo()), 14),
+                &pad_with_nbsp(&format!("{:.2}", plane.total_mass().kilo()), 16),
                 &bold_text_style,
                 (current_cell_width + cell_padding[2], y + 10),
             )
@@ -275,7 +310,6 @@ pub fn weight_and_balance_chart(
             (visualization.dimensions.0, visualization.dimensions.1),
         )
         .into_drawing_area();
-        
 
         left.fill(&WHITE)
             .expect("cannot fill background with white.");

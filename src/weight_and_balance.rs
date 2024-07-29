@@ -35,6 +35,13 @@ impl Volume {
             Volume::Gallon(v) => *v,
         }
     }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Volume::Liter(v) => format!("{:.2}L", v),
+            Volume::Gallon(v) => format!("{:.2}gal", v),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -67,6 +74,20 @@ impl Mass {
     pub fn to_mogas(&self) -> Mass {
         let liter = self.kilo() / MOGAS_FUEL_DENSITY_KG_LITER;
         Mass::Mogas(Volume::Liter(liter))
+    }
+
+    pub fn unit(&self) -> String {
+        match self {
+            Mass::Kilo(_) => "kg".to_string(),
+            Mass::Avgas(l) => match l {
+                Volume::Liter(_) => format!("{:.2}kg/L", AVGAS_FUEL_DENSITY_KG_LITER),
+                Volume::Gallon(_) => format!("{:.2}kg/gal", AVGAS_FUEL_DENSITY_KG_LITER * LITERS_IN_GALLON),
+            },
+            Mass::Mogas(l) => match l {
+                Volume::Liter(_) => format!("{:.2}kg/L", MOGAS_FUEL_DENSITY_KG_LITER),
+                Volume::Gallon(_) => format!("{:.2}kg/gal", MOGAS_FUEL_DENSITY_KG_LITER * LITERS_IN_GALLON),
+            },
+        }
     }
 }
 
@@ -199,6 +220,7 @@ impl Airplane {
         name: String,
         arm: LeverArm,
         mass: Mass,
+        max_volume: Option<Volume>,
     ) -> &Moment {
         let cg_limit = if arm.meter().ge(&0.5) {
             self.limits().rearward_cg_limit().meter()
@@ -217,15 +239,54 @@ impl Airplane {
                 kg_max_mass
             },
         );
-
-        let max_mass = match mass {
+        let max_mass = match &mass {
             Mass::Mogas(_) => max_mass.to_mogas(),
-            Mass::Avgas(_) => max_mass.to_mogas(),
+            Mass::Avgas(_) => max_mass.to_avgas(),
             _others => max_mass,
         };
 
-        let moment = Moment::new(name, arm, max_mass);
+        let limited_max_mass = match max_volume {
+            Some(max_volume) => match max_mass {
+                Mass::Avgas(v) => {
+                    if v.to_liter() > max_volume.to_liter() {
+                        Mass::Avgas(match mass {
+                            Mass::Avgas(Volume::Liter(_)) | Mass::Mogas(Volume::Liter(_)) => Volume::Liter(max_volume.to_liter()),
+                            Mass::Avgas(Volume::Gallon(_)) | Mass::Mogas(Volume::Gallon(_)) => {
+                                Volume::Gallon(Volume::Liter(max_volume.to_liter()).to_gallon())
+                            },
+                            _ => v
+                        })
+                    } else {
+                        let Mass::Avgas(ov) = mass else { panic!("should never be something else")};
+                        match ov {
+                            Volume::Gallon(_) => Mass::Avgas(Volume::Gallon(Volume::Liter(v.to_liter()).to_gallon())),
+                            Volume::Liter(_) => Mass::Avgas(Volume::Liter(v.to_liter())),
+                        }
+                    }
+                }
+                Mass::Mogas(v) => {
+                    if v.to_liter() > max_volume.to_liter() {
+                        Mass::Mogas(match mass {
+                            Mass::Avgas(Volume::Liter(_)) | Mass::Mogas(Volume::Liter(_)) => Volume::Liter(max_volume.to_liter()),
+                            Mass::Avgas(Volume::Gallon(_)) | Mass::Mogas(Volume::Gallon(_)) => {
+                                Volume::Gallon(Volume::Liter(max_volume.to_liter()).to_gallon())
+                            },
+                            _ => v
+                        })
+                    } else {
+                        let Mass::Mogas(ov) = mass else { panic!("should never be something else")};
+                        match ov {
+                            Volume::Gallon(_) => Mass::Mogas(Volume::Gallon(Volume::Liter(v.to_liter()).to_gallon())),
+                            Volume::Liter(_) => Mass::Mogas(Volume::Liter(v.to_liter())),
+                        }
+                    }
+                }
+                _ => max_mass,
+            },
+            None => max_mass,
+        };
 
+        let moment = Moment::new(name, arm, limited_max_mass);
         self.moments.push(moment);
         self.moments.last().unwrap()
     }
@@ -313,7 +374,12 @@ mod test {
         assert_eq!(
             10.0,
             plane
-                .add_max_mass_within_limits("test".to_string(), LeverArm::Meter(4.0), Mass::Avgas(Volume::Liter(0.0)))
+                .add_max_mass_within_limits(
+                    "test".to_string(),
+                    LeverArm::Meter(4.0),
+                    Mass::Avgas(Volume::Liter(0.0)),
+                    None
+                )
                 .mass()
                 .kilo()
         );
@@ -337,8 +403,12 @@ mod test {
         );
 
         {
-            let max_moment =
-                plane.add_max_mass_within_limits("test".to_string(), LeverArm::Meter(4.0), Mass::Avgas(Volume::Liter(0.0)));
+            let max_moment = plane.add_max_mass_within_limits(
+                "test".to_string(),
+                LeverArm::Meter(4.0),
+                Mass::Avgas(Volume::Liter(0.0)),
+                None,
+            );
             assert_eq!(9.0, max_moment.mass().kilo());
         }
 
