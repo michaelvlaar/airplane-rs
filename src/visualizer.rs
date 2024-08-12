@@ -1,6 +1,6 @@
 use crate::weight_and_balance::{Airplane, Mass, Volume};
 use core::ops::Range;
-use plotters::{prelude::*, style::full_palette::GREY};
+use plotters::{prelude::*, style::full_palette::{GREY, PURPLE}};
 
 pub enum Visualization {
     Svg(String),
@@ -345,10 +345,14 @@ pub fn weight_and_balance_chart(
             (m_forward_cg_moment * kg_mtow, kg_mtow),
         ];
 
+        // Draw the square (CG envelope)
         chart
             .draw_series(std::iter::once(Polygon::new(square_points, RED.mix(0.2))))
-            .expect("cannot draw polygon.");
+            .expect("cannot draw polygon.")
+            .label("CG Envelope")
+            .legend(|(x, y)| Rectangle::new([(x - 5, y - 5), (x + 5, y + 5)], RED.mix(0.2).filled()));
 
+        // Draw the total mass and moment point
         chart
             .draw_series(PointSeries::of_element(
                 vec![(plane.total_mass_moment().kgm(), plane.total_mass().kilo())],
@@ -356,10 +360,107 @@ pub fn weight_and_balance_chart(
                 if plane.within_limits() { GREEN } else { RED },
                 &|c, s, st| EmptyElement::at(c) + Circle::new((0, 0), s, st.filled()),
             ))
-            .expect("cannot draw point.");
+            .expect("cannot draw point.")
+            .label("Take-off Point")
+            .legend(|(x, y)| Circle::new((x, y), 5, GREEN.filled()));
+
+        // Draw the landing mass and moment point
+        chart
+            .draw_series(PointSeries::of_element(
+                vec![(plane.total_mass_moment_landing().kgm(), plane.total_mass_landing().kilo())],
+                5,
+                PURPLE,
+                &|c, s, st| EmptyElement::at(c) + Circle::new((0, 0), s, st.filled()),
+            ))
+            .expect("cannot draw point.")
+            .label("Landing Point")
+            .legend(|(x, y)| Circle::new((x, y), 5, PURPLE.filled()));
+
+        // Configure and draw the legend
+        chart
+            .configure_series_labels()
+            .border_style(BLACK)
+            .margin(20)
+            .background_style(WHITE.mix(0.8))
+            .draw()
+            .expect("cannot draw legend");
 
         left.present().expect("cannot write to buffer.");
     }
 
     Visualization::Svg(lbuf)
 }
+
+//pub fn weight_and_balance_chart(
+//    plane: Airplane,
+//    visualization: WeightBalanceChartVisualization,
+//) -> Visualization {
+//    let mut lbuf = String::new();
+//
+//    {
+//        let left = SVGBackend::with_string(
+//            &mut lbuf,
+//            (visualization.dimensions.0, visualization.dimensions.1),
+//        )
+//        .into_drawing_area();
+//
+//        left.fill(&WHITE)
+//            .expect("cannot fill background with white.");
+//
+//        let mut chart = ChartBuilder::on(&left)
+//            .caption(plane.callsign(), ("sans-serif", 50).into_font())
+//            .margin(5)
+//            .margin_right(20)
+//            .x_label_area_size(50)
+//            .y_label_area_size(80)
+//            .build_cartesian_2d(visualization.axis.0.clone(), visualization.axis.1.clone())
+//            .expect("cannot build chart.");
+//
+//        chart
+//            .configure_mesh()
+//            .x_desc("Mass Moment [kg m]")
+//            .x_label_style(("sans-serif", 20).into_font())
+//            .y_desc("Mass [kg]")
+//            .y_label_style(("sans-serif", 20).into_font())
+//            .x_label_formatter(&|x| format!("{}", x.round()))
+//            .y_label_formatter(&|y| format!("{}", y.round()))
+//            .draw()
+//            .expect("cannot configure mesh.");
+//
+//        let kg_mtow = plane.limits().mtow().kilo();
+//        let m_forward_cg_moment = plane.limits().forward_cg_limit().meter();
+//        let m_rearward_cg_moment = plane.limits().rearward_cg_limit().meter();
+//        let kg_minimum_weight = plane.limits().minimum_weight().kilo();
+//        let square_points = vec![
+//            (m_forward_cg_moment * kg_minimum_weight, kg_minimum_weight),
+//            (m_rearward_cg_moment * kg_minimum_weight, kg_minimum_weight),
+//            (m_rearward_cg_moment * kg_mtow, kg_mtow),
+//            (m_forward_cg_moment * kg_mtow, kg_mtow),
+//        ];
+//
+//        chart
+//            .draw_series(std::iter::once(Polygon::new(square_points, RED.mix(0.2))))
+//            .expect("cannot draw polygon.");
+//
+//        chart
+//            .draw_series(PointSeries::of_element(
+//                vec![(plane.total_mass_moment().kgm(), plane.total_mass().kilo())],
+//                5,
+//                if plane.within_limits() { GREEN } else { RED },
+//                &|c, s, st| EmptyElement::at(c) + Circle::new((0, 0), s, st.filled()),
+//            ))
+//            .expect("cannot draw point.");
+//
+//        chart
+//            .draw_series(PointSeries::of_element(
+//                vec![(plane.total_mass_moment_landing().kgm(), plane.total_mass_landing().kilo())],
+//                5,
+//                PURPLE,
+//                &|c, s, st| EmptyElement::at(c) + Circle::new((0, 0), s, st.filled()),
+//            ))
+//            .expect("cannot draw point.");
+//        left.present().expect("cannot write to buffer.");
+//    }
+//
+//    Visualization::Svg(lbuf)
+//}

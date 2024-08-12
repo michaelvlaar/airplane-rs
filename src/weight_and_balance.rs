@@ -1,8 +1,11 @@
+use crate::types::{FuelType, VolumeType};
+
 const AVGAS_FUEL_DENSITY_KG_LITER: f64 = 0.72;
 const MOGAS_FUEL_DENSITY_KG_LITER: f64 = 0.74;
 
 const LITERS_IN_GALLON: f64 = 378541.0 / 100000.0;
 
+#[derive(Clone)]
 pub enum LeverArm {
     Meter(f64),
 }
@@ -15,7 +18,7 @@ impl LeverArm {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Volume {
     Liter(f64),
     Gallon(f64),
@@ -44,7 +47,7 @@ impl Volume {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Mass {
     Kilo(f64),
     Avgas(Volume),
@@ -81,16 +84,23 @@ impl Mass {
             Mass::Kilo(_) => "kg".to_string(),
             Mass::Avgas(l) => match l {
                 Volume::Liter(_) => format!("{:.2}kg/L", AVGAS_FUEL_DENSITY_KG_LITER),
-                Volume::Gallon(_) => format!("{:.2}kg/gal", AVGAS_FUEL_DENSITY_KG_LITER * LITERS_IN_GALLON),
+                Volume::Gallon(_) => format!(
+                    "{:.2}kg/gal",
+                    AVGAS_FUEL_DENSITY_KG_LITER * LITERS_IN_GALLON
+                ),
             },
             Mass::Mogas(l) => match l {
                 Volume::Liter(_) => format!("{:.2}kg/L", MOGAS_FUEL_DENSITY_KG_LITER),
-                Volume::Gallon(_) => format!("{:.2}kg/gal", MOGAS_FUEL_DENSITY_KG_LITER * LITERS_IN_GALLON),
+                Volume::Gallon(_) => format!(
+                    "{:.2}kg/gal",
+                    MOGAS_FUEL_DENSITY_KG_LITER * LITERS_IN_GALLON
+                ),
             },
         }
     }
 }
 
+#[derive(Clone)]
 pub struct Moment {
     name: String,
     lever_arm: LeverArm,
@@ -193,14 +203,21 @@ pub struct Airplane {
     callsign: String,
     moments: Vec<Moment>,
     limits: Limits,
+    fuel_consumption_trip: Volume,
 }
 
 impl Airplane {
-    pub fn new(callsign: String, moments: Vec<Moment>, limits: Limits) -> Airplane {
+    pub fn new(
+        callsign: String,
+        moments: Vec<Moment>,
+        limits: Limits,
+        fuel_consumption_trip: Volume,
+    ) -> Airplane {
         Airplane {
             callsign,
             moments,
             limits,
+            fuel_consumption_trip,
         }
     }
 
@@ -215,11 +232,12 @@ impl Airplane {
         CenterOfGravity::Meter(kgm_moment / kg_mass)
     }
 
-    pub fn add_max_mass_within_limits(
+    pub fn add_max_fuel_within_limits(
         &mut self,
         name: String,
         arm: LeverArm,
-        mass: Mass,
+        fuel: FuelType,
+        volume: VolumeType,
         max_volume: Option<Volume>,
     ) -> &Moment {
         let cg_limit = if arm.meter().ge(&0.5) {
@@ -239,45 +257,36 @@ impl Airplane {
                 kg_max_mass
             },
         );
-        let max_mass = match &mass {
-            Mass::Mogas(_) => max_mass.to_mogas(),
-            Mass::Avgas(_) => max_mass.to_avgas(),
-            _others => max_mass,
+        let max_mass = match fuel {
+            FuelType::Mogas => max_mass.to_mogas(),
+            FuelType::Avgas => max_mass.to_avgas(),
         };
 
         let limited_max_mass = match max_volume {
             Some(max_volume) => match max_mass {
                 Mass::Avgas(v) => {
-                    if v.to_liter() > max_volume.to_liter() {
-                        Mass::Avgas(match mass {
-                            Mass::Avgas(Volume::Liter(_)) | Mass::Mogas(Volume::Liter(_)) => Volume::Liter(max_volume.to_liter()),
-                            Mass::Avgas(Volume::Gallon(_)) | Mass::Mogas(Volume::Gallon(_)) => {
-                                Volume::Gallon(Volume::Liter(max_volume.to_liter()).to_gallon())
-                            },
-                            _ => v
-                        })
+                    let volume_liter = if v.to_liter() > max_volume.to_liter() {
+                        max_volume.to_liter()
                     } else {
-                        let Mass::Avgas(ov) = mass else { panic!("should never be something else")};
-                        match ov {
-                            Volume::Gallon(_) => Mass::Avgas(Volume::Gallon(Volume::Liter(v.to_liter()).to_gallon())),
-                            Volume::Liter(_) => Mass::Avgas(Volume::Liter(v.to_liter())),
+                        v.to_liter()
+                    };
+                    match volume {
+                        VolumeType::Liter => Mass::Avgas(Volume::Liter(volume_liter)),
+                        VolumeType::Gallon => {
+                            Mass::Avgas(Volume::Gallon(Volume::Liter(volume_liter).to_gallon()))
                         }
                     }
                 }
                 Mass::Mogas(v) => {
-                    if v.to_liter() > max_volume.to_liter() {
-                        Mass::Mogas(match mass {
-                            Mass::Avgas(Volume::Liter(_)) | Mass::Mogas(Volume::Liter(_)) => Volume::Liter(max_volume.to_liter()),
-                            Mass::Avgas(Volume::Gallon(_)) | Mass::Mogas(Volume::Gallon(_)) => {
-                                Volume::Gallon(Volume::Liter(max_volume.to_liter()).to_gallon())
-                            },
-                            _ => v
-                        })
+                    let volume_liter = if v.to_liter() > max_volume.to_liter() {
+                        max_volume.to_liter()
                     } else {
-                        let Mass::Mogas(ov) = mass else { panic!("should never be something else")};
-                        match ov {
-                            Volume::Gallon(_) => Mass::Mogas(Volume::Gallon(Volume::Liter(v.to_liter()).to_gallon())),
-                            Volume::Liter(_) => Mass::Mogas(Volume::Liter(v.to_liter())),
+                        v.to_liter()
+                    };
+                    match volume {
+                        VolumeType::Liter => Mass::Mogas(Volume::Liter(volume_liter)),
+                        VolumeType::Gallon => {
+                            Mass::Mogas(Volume::Gallon(Volume::Liter(volume_liter).to_gallon()))
                         }
                     }
                 }
@@ -299,6 +308,41 @@ impl Airplane {
         Mass::Kilo(self.moments.iter().map(|m| m.mass.kilo()).sum())
     }
 
+    pub fn total_mass_moment_landing(&self) -> MassMoment {
+        let fuel_moment = self.moments.last().expect("should be present");
+        let mass_moment_without_fuel = self.total_mass_moment().kgm() - fuel_moment.total().kgm();
+
+        let mass = match fuel_moment.mass() {
+            Mass::Mogas(v) => Mass::Mogas(Volume::Liter(
+                v.to_liter() - self.fuel_consumption_trip.to_liter(),
+            )),
+            Mass::Avgas(v) => Mass::Avgas(Volume::Liter(
+                v.to_liter() - self.fuel_consumption_trip.to_liter(),
+            )),
+            _ => panic!("should be fuel"),
+        };
+
+        let fuel_moment = Moment::new("Fuel".to_string(), fuel_moment.lever_arm().clone(), mass);
+
+        MassMoment::KgM(mass_moment_without_fuel + fuel_moment.total().kgm())
+    }
+
+    pub fn total_mass_landing(&self) -> Mass {
+        let fuel_moment = self.moments.last().expect("should be present");
+        let mass_without_fuel = self.total_mass().kilo() - fuel_moment.mass().kilo();
+
+        let mass = match fuel_moment.mass() {
+            Mass::Mogas(v) => Mass::Mogas(Volume::Liter(
+                v.to_liter() - self.fuel_consumption_trip.to_liter(),
+            )),
+            Mass::Avgas(v) => Mass::Avgas(Volume::Liter(
+                v.to_liter() - self.fuel_consumption_trip.to_liter(),
+            )),
+            _ => panic!("should be fuel"),
+        };
+
+        Mass::Kilo(mass_without_fuel + mass.kilo())
+    }
     pub fn within_limits(&self) -> bool {
         let cg = self.center_of_gravity().meter();
         self.total_mass().kilo() <= self.limits.mtow.kilo()
@@ -353,6 +397,7 @@ mod test {
                 CenterOfGravity::Millimeter(427.0),
                 CenterOfGravity::Millimeter(523.0),
             ),
+            Volume::Liter(17.0),
         )
     }
 
@@ -369,15 +414,17 @@ mod test {
                 CenterOfGravity::Meter(1.0),
                 CenterOfGravity::Meter(3.0),
             ),
+            Volume::Liter(17.0),
         );
 
         assert_eq!(
             10.0,
             plane
-                .add_max_mass_within_limits(
+                .add_max_fuel_within_limits(
                     "test".to_string(),
                     LeverArm::Meter(4.0),
-                    Mass::Avgas(Volume::Liter(0.0)),
+                    FuelType::Avgas,
+                    VolumeType::Liter,
                     None
                 )
                 .mass()
@@ -400,13 +447,15 @@ mod test {
                 CenterOfGravity::Meter(1.0),
                 CenterOfGravity::Meter(3.0),
             ),
+            Volume::Liter(17.0),
         );
 
         {
-            let max_moment = plane.add_max_mass_within_limits(
+            let max_moment = plane.add_max_fuel_within_limits(
                 "test".to_string(),
                 LeverArm::Meter(4.0),
-                Mass::Avgas(Volume::Liter(0.0)),
+                FuelType::Avgas,
+                VolumeType::Liter,
                 None,
             );
             assert_eq!(9.0, max_moment.mass().kilo());
